@@ -1,0 +1,147 @@
+name: Matrix Build with Artifact Management
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  matrix-build:
+    name: Build on ${{ matrix.os }} with Node ${{ matrix.node-version }}
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node-version: [18, 20]
+        include:
+          # Add specific configuration for certain combinations
+          - os: ubuntu-latest
+            node-version: 18
+            artifact-suffix: "linux-lts"
+          - os: ubuntu-latest
+            node-version: 20
+            artifact-suffix: "linux-current"
+          - os: macos-latest
+            node-version: 18
+            artifact-suffix: "macos-lts"
+          - os: macos-latest
+            node-version: 20
+            artifact-suffix: "macos-current"
+          - os: windows-latest
+            node-version: 18
+            artifact-suffix: "windows-lts"
+          - os: windows-latest
+            node-version: 20
+            artifact-suffix: "windows-current"
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: matrix-4a5eacb
+        run: |
+          echo " Building for OS: ${{ matrix.os }}"
+          echo " Node version: ${{ matrix.node-version }}"
+          echo "  Artifact suffix: ${{ matrix.artifact-suffix }}"
+      
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+      
+      - name: Display system information
+        run: |
+          echo "Operating System: ${{ runner.os }}"
+          node --version
+          npm --version
+        shell: bash
+      
+      - name: Generate build artifact
+        run: |
+          mkdir -p build-output
+          echo "Build Information" > build-output/build-info.txt
+          echo "==================" >> build-output/build-info.txt
+          echo "OS: ${{ matrix.os }}" >> build-output/build-info.txt
+          echo "Node Version: ${{ matrix.node-version }}" >> build-output/build-info.txt
+          echo "Artifact Suffix: ${{ matrix.artifact-suffix }}" >> build-output/build-info.txt
+          echo "Build Time: $(date)" >> build-output/build-info.txt
+          echo "Runner OS: ${{ runner.os }}" >> build-output/build-info.txt
+          echo "GitHub SHA: ${{ github.sha }}" >> build-output/build-info.txt
+        shell: bash
+      
+      - name: Create build metadata JSON
+        run: |
+          cat > build-output/metadata.json << EOF
+          {
+            "os": "${{ matrix.os }}",
+            "nodeVersion": "${{ matrix.node-version }}",
+            "artifactSuffix": "${{ matrix.artifact-suffix }}",
+            "runnerOS": "${{ runner.os }}",
+            "buildTime": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+            "gitSha": "${{ github.sha }}",
+            "workflow": "${{ github.workflow }}",
+            "runNumber": "${{ github.run_number }}"
+          }
+          EOF
+        shell: bash
+      
+      - name: Simulate build process
+        run: |
+          echo "Compiling application..."
+          sleep 2
+          echo "export const BUILD_CONFIG = { os: '${{ matrix.os }}', node: '${{ matrix.node-version }}' };" > build-output/config.js
+          echo "Build completed successfully!" > build-output/build.log
+        shell: bash
+      
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-4a5eacb-${{ matrix.artifact-suffix }}
+          path: build-output/
+          retention-days: 30
+          if-no-files-found: error
+      
+      - name: Build summary
+        run: |
+          echo " Build completed for ${{ matrix.os }} with Node ${{ matrix.node-version }}"
+          echo " Artifact: build-4a5eacb-${{ matrix.artifact-suffix }}"
+        shell: bash
+
+  verify-artifacts:
+    name: Verify All Artifacts
+    needs: matrix-build
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-artifacts
+      
+      - name: List and verify artifacts
+        run: |
+          echo " Listing all downloaded artifacts:"
+          ls -la all-artifacts/
+          echo ""
+          echo " Verifying artifact contents:"
+          find all-artifacts -type f -name "*.txt" -o -name "*.json" -o -name "*.js" -o -name "*.log" | while read file; do
+            echo "---"
+            echo "File: $file"
+            cat "$file"
+            echo ""
+          done
+      
+      - name: Generate summary report
+        run: |
+          echo "# Matrix Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Artifacts Generated" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          ls -1 all-artifacts/ | while read artifact; do
+            echo "-  $artifact" >> $GITHUB_STEP_SUMMARY
+          done
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Total Artifacts:** $(ls -1 all-artifacts/ | wc -l)" >> $GITHUB_STEP_SUMMARY
